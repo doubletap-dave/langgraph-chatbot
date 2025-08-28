@@ -4,7 +4,17 @@ A simple chatbot built with Langchain, Langgraph, and Ollama.
 
 ## Setup
 
-1.  **Install uv (globally recommended with pipx):**
+1.  **Install uv:**
+
+    **Option 1: Standalone Installer (Recommended for Windows)**
+
+    Open PowerShell and run:
+
+    ```bash
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+
+    **Option 2: Using pipx (Recommended for global installation)**
 
     First, ensure you have `pipx` installed:
 
