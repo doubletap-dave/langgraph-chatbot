@@ -1,6 +1,6 @@
 # langgraph-chatbot
 
-A simple chatbot built with Langchain, Langgraph, and Ollama.
+A simple, agentic chatbot built with Langchain, Langgraph, and Ollama. It can use tools like Tavily Search to answer questions that require up-to-date information.
 
 ## Setup
 
@@ -10,7 +10,7 @@ A simple chatbot built with Langchain, Langgraph, and Ollama.
 
     Open PowerShell and run:
 
-    ```bash
+    ```powershell
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     ```
 
@@ -32,36 +32,43 @@ A simple chatbot built with Langchain, Langgraph, and Ollama.
 2.  **Install dependencies (using uv):**
 
     ```bash
-    uv add langgraph langsmith typing-extensions
+    uv add dotenv ipykernel langchain langchain-community langchain-ollama langchain-tavily langgraph langsmith typing-extensions
     ```
 
-3.  **Run the chatbot:**
+3.  **Configure Environment Variables:**
+
+    Create a `.env` file in the project root and add the following variables:
+
+    ```env
+    TAVILY_API_KEY="your_tavily_api_key"
+    TAVILY_MAX_RESULTS=3
+    HEAVY_MODEL="gpt-oss:20b"
+    LIGHT_MODEL="your_optional_light_model"
+    ```
+
+    - `TAVILY_API_KEY`: Your API key for the Tavily Search Engine.
+    - `TAVILY_MAX_RESULTS`: The maximum number of search results to return.
+    - `HEAVY_MODEL`: The primary Ollama model to use (must support tool calling).
+    - `LIGHT_MODEL`: An optional, lighter model for simpler tasks (not yet implemented).
+
+4.  **Run the chatbot:**
 
     ```bash
     uv run python main.py
     ```
 
-    Alternatively, you can run it directly with python if your virtual environment is activated:
-
-    ```bash
-    python main.py
-    ```
-
 ## Usage
 
-Type your messages at the `User:` prompt. To exit the chatbot, type `exit`, `quit`, or `q`.
+Type your messages at the `You >>>` prompt. The bot will respond, and if it needs to perform a web search, it will indicate that it's calling the Tavily search tool.
 
-## Configuration
+To exit the chatbot, type `exit`, `quit`, or `q`.
 
-The Ollama model and base URL are configured in `main.py`:
+## How It Works
 
-```python
-llm = OllamaLLM(
-    model="gemma3n:e4b",
-    base_url="http://192.168.7.43:11434",
-    temperature=0.7,
-)
-```
+The chatbot is built on a `langgraph` state machine with two main nodes:
 
-Make sure your Ollama server is running and accessible at the specified `base_url`.
+-   **Agent**: This node uses an Ollama model to decide whether to respond directly or to use a tool.
+-   **Tools**: This node executes the tool requested by the agent (currently, Tavily Search).
+
+A conditional edge routes the conversation between the agent and the tools based on the agent's decision. This allows the chatbot to dynamically choose the best way to answer your questions.
 

@@ -1,89 +1,73 @@
-from typing import Annotated, List, Dict, Any, Optional
-
-from typing_extensions import TypedDict
-
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from src.graph_state import State
+from src.chatbot_logic import agent
+from src.nodes import BasicToolNode
+from src.tools.tavily import tools as tavily_tools
 
-class State(TypedDict):
-    """Represents the state of the chatbot conversation.
-
-    Attributes:
-        messages: A list of message dictionaries. The `add_messages` function ensures
-                  new messages are appended to this list rather than overwriting it.
+def should_continue(state: State) -> str:
     """
-    # Messages have the type "list". The `add_messages` function
-    # in the annotation defines how this state key should be updated
-    # (in this case, it appends messages to the list; doesn't overwrite them)
-    messages: Annotated[List[Dict[str, Any]], add_messages]
+    Determines the next step based on the last message.
+
+    If the last message is a tool call, the graph should continue to the 'tools' node.
+    Otherwise, it should end the conversation turn.
+
+    Args:
+        state (State): The current state of the conversation.
+
+    Returns:
+        str: "continue" if a tool should be called, "end" otherwise.
+    """
+    messages = state['messages']
+    last_message = messages[-1]
+    if last_message.tool_calls:
+        return "continue"
+    return "end"
 
 graph_builder = StateGraph(State)
 
-from langchain_ollama.llms import OllamaLLM
+# Add nodes
+graph_builder.add_node("agent", agent)
+tool_node = BasicToolNode(tools=tavily_tools)
+graph_builder.add_node("tools", tool_node)
 
-llm = OllamaLLM(
-    model="gemma3n:e4b",
-    base_url="http://192.168.7.43:11434",
-    temperature=0.7,
+# Set entry point
+graph_builder.set_entry_point("agent")
+
+# Add edges
+graph_builder.add_conditional_edges(
+    "agent",
+    should_continue,
+    {
+        "continue": "tools",
+        "end": END,
+    },
 )
-
-
-def bot(state: State) -> State:
-    """Represents the main chatbot logic.
-
-    This function processes the latest user message, invokes the Ollama LLM with a system message
-    to guide its behavior, and then formats the LLM's response as an assistant message.
-
-    Args:
-        state (State): The current state of the conversation, including the message history.
-
-    Returns:
-        State: The updated state with the LLM's response appended to the message history.
-    """
-    # Get the last user message content
-    user_message = state["messages"][-1]
-    if isinstance(user_message, dict):
-        user_content = user_message.get("content", str(user_message))
-    else:
-        user_content = str(user_message)
-
-    messages_to_send = [
-        SystemMessage(content="You are a helpful AI assistant. Keep your responses concise and conversational. Do not include metadata, explanations, or formatting notes in your responses."),
-        user_content
-    ]
-
-    # Invoke LLM with the user content
-    response = llm.invoke(messages_to_send)
-
-    # Format the response as a message object
-    bot_message = {"role": "assistant", "content": response}
-    return {"messages": [bot_message]}
-
-
-graph_builder.add_node("bot", bot)
-graph_builder.add_edge(START, "bot")
-graph_builder.add_edge("bot", END)
+graph_builder.add_edge("tools", "agent")
 
 graph = graph_builder.compile()
 
-
 def stream_graph_updates(user_input: str):
-    """Streams updates from the chatbot graph and prints the bot's responses.
+    """Streams updates from the chatbot graph and prints the bot's responses."""
+    initial_state = {"messages": [("user", user_input)]}
 
-    This function takes user input, sends it to the compiled chatbot graph, and then
-    iterates through the events to extract and print the bot's messages.
+    for event in graph.stream(initial_state, stream_mode="values"):
+        last_message = event["messages"][-1]
 
-    Args:
-        user_input (str): The message provided by the user.
-    """
-    for event in graph.stream({"messages": [{"role": "user", "content": user_input}]}):
-        for value in event.values():
-            print("Bot: ", value["messages"][-1]["content"])
+        # Don't print the user's message
+        if isinstance(last_message, HumanMessage):
+            continue
+        
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
+            print("Bot --- ", "Calling tools...")
+            for tool_call in last_message.tool_calls:
+                print(f"  - {tool_call['name']}({tool_call['args']})")
+        elif hasattr(last_message, 'content'):
+            print("Bot >>>", last_message.content)
 
 while True:
     try:
-        user_input = input("User: ")
+        user_input = input("You <<< ")
         if user_input.lower() in ["exit", "quit", "q"]:
             print("Exiting...")
             break
@@ -92,12 +76,8 @@ while True:
         print("\nExiting...")
         break
     except EOFError:
-        # Handle Ctrl-D or end of input
         print("\nExiting...")
         break
-    except Exception:
-        # fallback if input() is not available
-        user_input = "`Fallback prompt, something broke."
-        print("User: ", user_input)
-        stream_graph_updates(user_input)
+    except Exception as e:
+        print(f"An error occurred: {e}")
         break
