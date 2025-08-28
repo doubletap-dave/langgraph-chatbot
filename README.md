@@ -4,13 +4,22 @@ A simple chatbot built with Langchain, Langgraph, and Ollama.
 
 ## Setup
 
-1.  **Install uv:**
+1.  **Install uv (globally recommended with pipx):**
+
+    First, ensure you have `pipx` installed:
 
     ```bash
-    pip install uv
+    pip install pipx
+    pipx ensurepath
     ```
 
-2.  **Install dependencies:**
+    Then, install `uv`:
+
+    ```bash
+    pipx install uv
+    ```
+
+2.  **Install dependencies (using uv):**
 
     ```bash
     uv add langgraph langsmith typing-extensions
